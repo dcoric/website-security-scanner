@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  security-scan:
+    build: .
+    container_name: security-scan-job
+    environment:
+      - TARGET_URL=https://example.com
+      # SMTP Configuration for emailing reports
+      - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - EMAIL_FROM=${EMAIL_FROM:-scanner@example.com}
+      - EMAIL_TO=${EMAIL_TO:-admin@example.com}
+
+      # LLM Configuration (Optional)
+      # Options: openai, deepseek, gemini, custom
+      - LLM_PROVIDER=${LLM_PROVIDER}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - LLM_MODEL=${LLM_MODEL}
+      # Required only for 'custom' provider (or to override others)
+      - LLM_BASE_URL=${LLM_BASE_URL}
+    volumes:
+      # Persist ClamAV database so it doesn't redownload every run
+      - clamav_db:/var/lib/clamav
+      # Optional: Bind mount to fetch results locally
+      # - ./retire-report.json:/app/retire-report.json
+      # - ./clamav-report.txt:/app/clamav-report.txt
+
+volumes:
+  clamav_db:

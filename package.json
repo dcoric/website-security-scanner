@@ -1,0 +1,20 @@
+{
+    "name": "security-scan",
+    "version": "1.0.0",
+    "description": "Automated security scan for website dependencies",
+    "scripts": {
+        "scan": "retire-site-scanner",
+        "download-assets": "node download-assets.js"
+    },
+    "devDependencies": {
+        "puppeteer": "^23.11.1",
+        "retire": "^5.4.0",
+        "retire-site-scanner": "^1.6.5",
+        "xml2js": "^0.6.2"
+    },
+    "dependencies": {
+        "@google/generative-ai": "^0.24.1",
+        "nodemailer": "^7.0.12",
+        "openai": "^6.16.0"
+    }
+}
