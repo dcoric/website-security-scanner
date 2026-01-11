@@ -114,6 +114,26 @@ async function parseSitemap(page, sitemapUrl) {
         pagesToVisit = pagesToVisit.slice(0, maxPagesToVisit);
     }
 
+    // Filter out skipped prefixes
+    const skipPrefixes = (process.env.SKIP_URL_PREFIXES || '')
+        .split(',')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+
+    if (skipPrefixes.length > 0) {
+        console.log(`Skipping URLs starting with: ${skipPrefixes.join(', ')}`);
+        const originalCount = pagesToVisit.length;
+        pagesToVisit = pagesToVisit.filter(url => {
+            const urlPath = new URL(url).pathname;
+            const shouldSkip = skipPrefixes.some(prefix => urlPath.startsWith(prefix));
+            if (shouldSkip) {
+                console.log(`Skipping ${url} (matches prefix)`);
+            }
+            return !shouldSkip;
+        });
+        console.log(`Filtered out ${originalCount - pagesToVisit.length} pages based on skip prefixes.`);
+    }
+
     // 2. Visit Pages and Collect Scripts
     for (const pageUrl of pagesToVisit) {
         if (seenPages.has(pageUrl)) continue;
