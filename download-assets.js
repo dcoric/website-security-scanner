@@ -175,5 +175,12 @@ async function parseSitemap(page, sitemapUrl) {
     console.log(`Scanned ${seenPages.size} pages.`);
     console.log(`Downloaded ${seenScripts.size} unique scripts.`);
 
+    // Save metrics for report
+    const metadata = {
+        scannedUrlCount: seenPages.size,
+        downloadedScriptCount: seenScripts.size
+    };
+    fs.writeFileSync(path.join(__dirname, 'scan-metadata.json'), JSON.stringify(metadata, null, 2));
+
     await browser.close();
 })();

@@ -18,7 +18,7 @@ const llmApiKey = process.env.LLM_API_KEY;
 const llmModel = process.env.LLM_MODEL; // e.g. gpt-4o, gemini-pro, deepseek-chat
 const llmBaseUrl = process.env.LLM_BASE_URL;
 
-async function generateReportContent(retireSummary, clamavSummary, totalIssues) {
+async function generateReportContent(retireSummary, clamavSummary, totalIssues, scanMetrics) {
     if (!llmProvider || !llmApiKey) {
         console.log('LLM_PROVIDER or LLM_API_KEY not set. Using default template.');
         return null;
@@ -38,10 +38,13 @@ async function generateReportContent(retireSummary, clamavSummary, totalIssues) 
     ${clamavSummary.replace(/<[^>]*>/g, '')}
     
     Total Issues Found: ${totalIssues}
+    Pages Scanned: ${scanMetrics ? scanMetrics.scannedUrlCount : 'Unknown'}
+    Scripts Downloaded: ${scanMetrics ? scanMetrics.downloadedScriptCount : 'Unknown'}
     
     Task: Write a professional, concise email report in HTML format summarizing these findings.
     - If there are issues, highlight them and explain the potential risk.
     - If there are no issues, certify that the scan passed.
+    - Include metrics about the scan (number of pages, number of checked files).
     - Use a professional tone.
     - Output ONLY the HTML body content (do not include <html> or <body> tags, just the inner content).
     - Use clear headings and lists.
@@ -129,12 +132,23 @@ async function sendEmail() {
     if (clamavIssues === 0) clamavHtml = 'No malware found.';
 
     // 2. Generate Content
-    let htmlContent = await generateReportContent(retireHtml, clamavHtml, retireIssues + clamavIssues);
+    let scanMetrics = null;
+    try {
+        if (fs.existsSync('scan-metadata.json')) {
+            scanMetrics = JSON.parse(fs.readFileSync('scan-metadata.json', 'utf8'));
+        }
+    } catch (e) {
+        console.error('Failed to read scan metadata:', e.message);
+    }
+
+    let htmlContent = await generateReportContent(retireHtml, clamavHtml, retireIssues + clamavIssues, scanMetrics);
 
     if (!htmlContent) {
         // Fallback Template
         htmlContent = `
             <h2>Security Scan Report for ${targetUrl}</h2>
+            <p><strong>Pages Scanned:</strong> ${scanMetrics ? scanMetrics.scannedUrlCount : 'Unknown'}</p>
+            <p><strong>Scripts Downloaded:</strong> ${scanMetrics ? scanMetrics.downloadedScriptCount : 'Unknown'}</p>
             <h3>Retire.js</h3>
             ${retireHtml}
             <h3>ClamAV</h3>
