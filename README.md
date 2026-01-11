@@ -69,21 +69,20 @@ To run this scanner as a containerized job with email reporting:
       - LLM_MODEL=deepseek-chat
     ```
 
-3.  **Build & Run**:
+2.  **Build & Run**:
     ```bash
     docker compose build
     docker compose up
     ```
 
 3.  **Run as Cron Job**:
-    To schedule this to run daily (e.g., at 2 AM), add the following to your server's crontab (`crontab -e`):
+    To schedule this to run every Sunday at 9 AM, add the following to your server's crontab (`crontab -e`):
     ```bash
-    0 2 * * * cd /path/to/security-scan && docker compose up >> /var/log/security-scan.log 2>&1
+    0 9 * * 0 cd /path/to/security-scan && docker compose up >> /var/log/security-scan.log 2>&1
     ```
 
 ### What happens inside the container?
 1.  **Assets Download**: Crawls sitemap and downloads scripts.
 2.  **Vulnerability Scan**: Runs `retire.js`.
 3.  **Malware Scan**: Runs `clamscan` (detected false positives will be listed).
-4.  **Email**: Sends a HTML summary of both scans to the configured address.
 
