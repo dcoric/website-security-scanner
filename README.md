@@ -35,7 +35,8 @@ This repository includes a `Jenkinsfile` that defines a declarative pipeline.
 
 ### Pipeline Stages
 1.  **Gather Assets**: Crawls the site via sitemap and downloads scripts.
-2.  **Vulnerability Scan**: Runs `retire.js` on the assets.
+2.  **Dead Domain Scan**: Checks for invalid DNS entries in extracted URLs.
+3.  **Vulnerability Scan**: Runs `retire.js` on the assets.
 3.  **Malware Scan**: Runs `clamscan` (if available).
 
 ## Malware Analysis & False Positives

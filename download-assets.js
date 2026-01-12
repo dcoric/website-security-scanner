@@ -135,6 +135,16 @@ async function parseSitemap(page, sitemapUrl) {
     }
 
     // 2. Visit Pages and Collect Scripts
+    const foundUrlsFile = path.join(__dirname, 'found_urls.txt');
+    // Clear previous run
+    if (fs.existsSync(foundUrlsFile)) fs.unlinkSync(foundUrlsFile);
+
+    const appendUrls = (urls) => {
+        if (urls.length > 0) {
+            fs.appendFileSync(foundUrlsFile, urls.join('\n') + '\n');
+        }
+    };
+
     for (const pageUrl of pagesToVisit) {
         if (seenPages.has(pageUrl)) continue;
         seenPages.add(pageUrl);
@@ -142,6 +152,31 @@ async function parseSitemap(page, sitemapUrl) {
         console.log(`Visiting ${pageUrl}...`);
         try {
             await page.goto(pageUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+            // Extract generic URLs from page content
+            const extractedUrls = await page.evaluate(() => {
+                const urls = new Set();
+
+                // 1. HREF attributes
+                document.querySelectorAll('*[href]').forEach(el => urls.add(el.href));
+
+                // 2. SRC attributes
+                document.querySelectorAll('*[src]').forEach(el => urls.add(el.src));
+
+                // 3. ACTION attributes (forms)
+                document.querySelectorAll('form[action]').forEach(el => urls.add(el.action));
+
+                // 4. Regex scan of full HTML for anything looking like a URL
+                // This is aggressive but necessary to catch URLs in JS strings, data attributes, etc.
+                const html = document.documentElement.outerHTML;
+                const urlRegex = /https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:[\/?#][^\s"']*)?/g;
+                const matches = html.match(urlRegex) || [];
+                matches.forEach(m => urls.add(m));
+
+                return Array.from(urls);
+            });
+
+            appendUrls(extractedUrls);
 
             const scripts = await page.evaluate(() => {
                 return Array.from(document.querySelectorAll('script[src]'))

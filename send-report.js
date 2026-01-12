@@ -18,7 +18,7 @@ const llmApiKey = process.env.LLM_API_KEY;
 const llmModel = process.env.LLM_MODEL; // e.g. gpt-4o, gemini-pro, deepseek-chat
 const llmBaseUrl = process.env.LLM_BASE_URL;
 
-async function generateReportContent(retireSummary, clamavSummary, totalIssues, scanMetrics) {
+async function generateReportContent(retireSummary, clamavSummary, deadDomainSummary, totalIssues, scanMetrics) {
     if (!llmProvider || !llmApiKey) {
         console.log('LLM_PROVIDER or LLM_API_KEY not set. Using default template.');
         return null;
@@ -30,6 +30,9 @@ async function generateReportContent(retireSummary, clamavSummary, totalIssues, 
     Scan is run on ${new Date().toLocaleString()}
 
     Here are the raw results:
+
+    [Dead Domain Scan (Critical - Potential Subdomain Takeover)]
+    ${deadDomainSummary || 'No dead domains found.'}
     
     [Retire.js (Client-Side Vulnerabilities)]
     ${retireSummary.replace(/<[^>]*>/g, '') /* Strip HTML for prompt */}
@@ -115,6 +118,7 @@ async function sendEmail() {
             }
         }
     } catch (e) { } // Ignore
+
     if (retireIssues === 0) retireHtml = 'No vulnerabilities found.';
 
     let clamavIssues = 0;
@@ -131,6 +135,21 @@ async function sendEmail() {
     } catch (e) { }
     if (clamavIssues === 0) clamavHtml = 'No malware found.';
 
+    let deadDomainIssues = 0;
+    let deadDomainHtml = '';
+    let deadDomainSummary = '';
+    try {
+        if (fs.existsSync('dead-domains.json')) {
+            const data = JSON.parse(fs.readFileSync('dead-domains.json', 'utf8'));
+            if (data.deadDomains && data.deadDomains.length > 0) {
+                deadDomainIssues = data.deadDomains.length;
+                deadDomainHtml = '<ul>' + data.deadDomains.map(d => `<li><strong>${d.domain}</strong>: ${d.error}</li>`).join('') + '</ul>';
+                deadDomainSummary = data.deadDomains.map(d => `- ${d.domain} (${d.error})`).join('\n');
+            }
+        }
+    } catch (e) { }
+    if (deadDomainIssues === 0) deadDomainHtml = 'No dead domains found.';
+
     // 2. Generate Content
     let scanMetrics = null;
     try {
@@ -141,7 +160,7 @@ async function sendEmail() {
         console.error('Failed to read scan metadata:', e.message);
     }
 
-    let htmlContent = await generateReportContent(retireHtml, clamavHtml, retireIssues + clamavIssues, scanMetrics);
+    let htmlContent = await generateReportContent(retireHtml, clamavHtml, deadDomainSummary, retireIssues + clamavIssues + deadDomainIssues, scanMetrics);
 
     if (!htmlContent) {
         // Fallback Template
@@ -149,8 +168,13 @@ async function sendEmail() {
             <h2>Security Scan Report for ${targetUrl}</h2>
             <p><strong>Pages Scanned:</strong> ${scanMetrics ? scanMetrics.scannedUrlCount : 'Unknown'}</p>
             <p><strong>Scripts Downloaded:</strong> ${scanMetrics ? scanMetrics.downloadedScriptCount : 'Unknown'}</p>
+            
+            <h3>Dead Domains (Critical)</h3>
+            ${deadDomainHtml}
+
             <h3>Retire.js</h3>
             ${retireHtml}
+            
             <h3>ClamAV</h3>
             ${clamavHtml}
         `;
@@ -165,7 +189,7 @@ async function sendEmail() {
         ignoreTLS: true
     });
 
-    const subject = `WebsiteSecurity Report: ${(retireIssues + clamavIssues) > 0 ? "Issues Found" : "Clean"}`;
+    const subject = `WebsiteSecurity Report: ${(retireIssues + clamavIssues + deadDomainIssues) > 0 ? "Issues Found" : "Clean"}`;
 
     try {
         await transporter.sendMail({

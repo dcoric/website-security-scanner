@@ -5,6 +5,11 @@ set -e
 echo "[1/4] Starting Asset Download for $TARGET_URL..."
 npm run download-assets -- "$TARGET_URL"
 
+# 1.5 Dead Domain Scan
+echo "[!] Running Dead Domain Scan..."
+node check-dead-domains.js || true
+# If this fails (exit 1), we continue so we can report it via email.
+
 # 2. Retire.js Scan
 echo "[2/4] Running Vulnerability Scan..."
 # We allow this to fail (return code != 0) so the script continues? 
