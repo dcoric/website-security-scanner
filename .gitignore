@@ -6,8 +6,7 @@ node_modules/
 
 # Generated Assets & Reports
 js_assets/
-retire-report.json
-clamav-report.txt
+reports/
 
 # Logs
 npm-debug.log*

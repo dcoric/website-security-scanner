@@ -25,8 +25,7 @@ services:
       # Persist ClamAV database so it doesn't redownload every run
       - clamav_db:/var/lib/clamav
       # Optional: Bind mount to fetch results locally
-      # - ./retire-report.json:/app/retire-report.json
-      # - ./clamav-report.txt:/app/clamav-report.txt
+      - ./reports:/app/reports
 
 volumes:
   clamav_db:

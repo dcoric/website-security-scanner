@@ -24,6 +24,8 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
+RUN mkdir -p /app/reports
+
 # Copy package files
 COPY package*.json ./
 

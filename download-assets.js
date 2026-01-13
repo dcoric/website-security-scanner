@@ -21,6 +21,35 @@ const seenScripts = new Set();
 const seenPages = new Set();
 const maxPagesToVisit = 1500; // Limit to avoid endless crawling
 
+const scriptSkipDomains = (process.env.SKIP_SCRIPT_DOMAINS || [
+    'googleads.g.doubleclick.net',
+    'g.doubleclick.net',
+    'doubleclick.net',
+    'googlesyndication.com',
+    'googletagmanager.com',
+    'google-analytics.com',
+    'analytics.google.com',
+    'fonts.googleapis.com',
+    'fonts.gstatic.com',
+    'connect.facebook.net',
+    'platform.twitter.com',
+    'twitter.com',
+    'x.com',
+    'platform.x.com',
+    'youtube.com',
+    's.ytimg.com',
+    'ajax.googleapis.com',
+    'cdnjs.cloudflare.com',
+    'unpkg.com',
+    'code.jquery.com',
+    'cdn.jsdelivr.net',
+    'www.google.com',
+    'www.gstatic.com'
+].join(','))
+    .split(',')
+    .map(d => d.trim())
+    .filter(d => d.length > 0);
+
 // Function to download a file
 const downloadFile = (url, dest) => {
     const file = fs.createWriteStream(dest);
@@ -41,6 +70,16 @@ const downloadFile = (url, dest) => {
             reject(err);
         });
     });
+};
+
+const isScriptDomainSkipped = (scriptUrl) => {
+    if (scriptSkipDomains.length === 0) return false;
+    try {
+        const hostname = new URL(scriptUrl).hostname;
+        return scriptSkipDomains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
+    } catch (e) {
+        return false;
+    }
 };
 
 async function parseSitemap(page, sitemapUrl) {
@@ -159,6 +198,8 @@ async function parseSitemap(page, sitemapUrl) {
         }
     };
 
+    let downloadedScripts = 0;
+
     for (const pageUrl of pagesToVisit) {
         if (seenPages.has(pageUrl)) continue;
         seenPages.add(pageUrl);
@@ -203,12 +244,17 @@ async function parseSitemap(page, sitemapUrl) {
                     seenScripts.add(scriptUrl);
 
                     try {
+                        if (isScriptDomainSkipped(scriptUrl)) {
+                            console.log(`--> Skipping ${scriptUrl} (whitelisted domain)`);
+                            continue;
+                        }
                         const fileName = path.basename(new URL(scriptUrl).pathname) || 'script.js';
                         const uniqueName = `${Date.now()}-${Math.floor(Math.random() * 1000)}-${fileName}`;
                         const destPath = path.join(outputDir, uniqueName);
 
                         console.log(`--> Downloading ${scriptUrl}`);
                         await downloadFile(scriptUrl, destPath);
+                        downloadedScripts += 1;
                     } catch (err) {
                         console.error(`Failed to handle script url ${scriptUrl}:`, err.message);
                     }
@@ -222,14 +268,16 @@ async function parseSitemap(page, sitemapUrl) {
 
     console.log('Download complete.');
     console.log(`Scanned ${seenPages.size} pages.`);
-    console.log(`Downloaded ${seenScripts.size} unique scripts.`);
+    console.log(`Downloaded ${downloadedScripts} unique scripts.`);
 
     // Save metrics for report
     const metadata = {
         scannedUrlCount: seenPages.size,
-        downloadedScriptCount: seenScripts.size
+        downloadedScriptCount: downloadedScripts
     };
-    fs.writeFileSync(path.join(__dirname, 'scan-metadata.json'), JSON.stringify(metadata, null, 2));
+    const reportsDir = path.join(__dirname, 'reports');
+    fs.mkdirSync(reportsDir, { recursive: true });
+    fs.writeFileSync(path.join(reportsDir, 'scan-metadata.json'), JSON.stringify(metadata, null, 2));
 
     await browser.close();
 })();

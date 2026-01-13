@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const nodemailer = require('nodemailer');
 const { OpenAI } = require('openai');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -17,6 +18,7 @@ const llmProvider = (process.env.LLM_PROVIDER || '').toLowerCase(); // openai, d
 const llmApiKey = process.env.LLM_API_KEY;
 const llmModel = process.env.LLM_MODEL; // e.g. gpt-4o, gemini-pro, deepseek-chat
 const llmBaseUrl = process.env.LLM_BASE_URL;
+const reportsDir = path.join(__dirname, 'reports');
 
 async function generateReportContent(retireSummary, clamavSummary, deadDomainSummary, totalIssues, scanMetrics) {
     if (!llmProvider || !llmApiKey) {
@@ -105,8 +107,9 @@ async function sendEmail() {
     // ... [Same parsing logic as before, abbreviated for brevity in this step update] ...
     // Re-implementing parsing logic efficiently:
     try {
-        if (fs.existsSync('retire-report.json')) {
-            const retireData = JSON.parse(fs.readFileSync('retire-report.json', 'utf8'));
+        const retirePath = path.join(reportsDir, 'retire-report.json');
+        if (fs.existsSync(retirePath)) {
+            const retireData = JSON.parse(fs.readFileSync(retirePath, 'utf8'));
             if (Array.isArray(retireData)) {
                 retireData.forEach(fileOpt => {
                     if (fileOpt.results && fileOpt.results.length > 0) {
@@ -124,8 +127,12 @@ async function sendEmail() {
     let clamavIssues = 0;
     let clamavHtml = '';
     try {
-        if (fs.existsSync('clamav-report.txt')) {
-            const txt = fs.readFileSync('clamav-report.txt', 'utf8');
+        const clamavPath = path.join(reportsDir, 'clamav-report.txt');
+        if (fs.existsSync(clamavPath)) {
+            const rawTxt = fs.readFileSync(clamavPath, 'utf8');
+            const summaryMarker = '----------- SCAN SUMMARY -----------';
+            const markerIndex = rawTxt.indexOf(summaryMarker);
+            const txt = markerIndex >= 0 ? rawTxt.slice(markerIndex) : rawTxt;
             const match = txt.match(/Infected files: (\d+)/);
             if (match && parseInt(match[1]) > 0) {
                 clamavIssues = parseInt(match[1]);
@@ -153,8 +160,9 @@ async function sendEmail() {
     // 2. Generate Content
     let scanMetrics = null;
     try {
-        if (fs.existsSync('scan-metadata.json')) {
-            scanMetrics = JSON.parse(fs.readFileSync('scan-metadata.json', 'utf8'));
+        const metadataPath = path.join(reportsDir, 'scan-metadata.json');
+        if (fs.existsSync(metadataPath)) {
+            scanMetrics = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
         }
     } catch (e) {
         console.error('Failed to read scan metadata:', e.message);

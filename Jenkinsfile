@@ -30,11 +30,12 @@ pipeline {
             steps {
                 script {
                     echo "Running Retire.js on downloaded assets..."
+                    sh "mkdir -p reports"
                     // Scan the folder where we downloaded scripts
                     // Return 0 even if issues found so we can mark Unstable manually if needed, 
                     // or let it fail. Retire returns 13 on vuln found by default.
                     try {
-                        sh "npx retire --path js_assets --outputformat json --outputpath retire-report.json"
+                        sh "npx retire --path js_assets --outputformat json --outputpath reports/retire-report.json"
                         // If we want to see output in console too:
                         sh "npx retire --path js_assets"
                     } catch (exc) {
@@ -43,8 +44,8 @@ pipeline {
                     }
                     
                     // Archive the report
-                    if (fileExists('retire-report.json')) {
-                        archiveArtifacts artifacts: 'retire-report.json'
+                    if (fileExists('reports/retire-report.json')) {
+                        archiveArtifacts artifacts: 'reports/retire-report.json'
                     }
                 }
             }

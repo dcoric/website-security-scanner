@@ -16,15 +16,17 @@ echo "[2/4] Running Vulnerability Scan..."
 # Usually scan tools return non-zero on findings. We want to proceed to email.
 # So we use '|| true' to suppress exit on failure, but we should probably capture exit code if we wanted to fail the container.
 # For a cron job reporting email, usually we want it to finish.
-npx retire --path js_assets --outputformat json --outputpath retire-report.json || true
+REPORTS_DIR="reports"
+mkdir -p "$REPORTS_DIR"
+npx retire --path js_assets --outputformat json --outputpath "$REPORTS_DIR/retire-report.json" || true
 
 # 3. ClamAV Scan
 echo "[3/4] Running ClamAV Scan..."
 # Update database occasionally? For docker, we might update in entrypoint or cron.
 # Assuming db is present.
-clamscan -r js_assets > clamav-report.txt || true
+clamscan -r js_assets > "$REPORTS_DIR/clamav-report.txt" || true
 # Cat the report to stdout for logs
-cat clamav-report.txt
+cat "$REPORTS_DIR/clamav-report.txt"
 
 # 4. Email Report
 echo "[4/4] Sending Report..."
