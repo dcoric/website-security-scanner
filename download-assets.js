@@ -19,7 +19,7 @@ if (!fs.existsSync(outputDir)) {
 
 const seenScripts = new Set();
 const seenPages = new Set();
-const maxPagesToVisit = 100; // Limit to avoid endless crawling
+const maxPagesToVisit = 1500; // Limit to avoid endless crawling
 
 // Function to download a file
 const downloadFile = (url, dest) => {
@@ -120,18 +120,32 @@ async function parseSitemap(page, sitemapUrl) {
         .map(p => p.trim())
         .filter(p => p.length > 0);
 
+    const includePrefixes = (process.env.INCLUDE_URL_PREFIXES || '')
+        .split(',')
+        .map(p => p.trim())
+        .filter(p => p.length > 0);
+
     if (skipPrefixes.length > 0) {
         console.log(`Skipping URLs starting with: ${skipPrefixes.join(', ')}`);
+        if (includePrefixes.length > 0) {
+            console.log(`But including URLs starting with: ${includePrefixes.join(', ')}`);
+        }
+
         const originalCount = pagesToVisit.length;
         pagesToVisit = pagesToVisit.filter(url => {
             const urlPath = new URL(url).pathname;
-            const shouldSkip = skipPrefixes.some(prefix => urlPath.startsWith(prefix));
+            const matchesSkip = skipPrefixes.some(prefix => urlPath.startsWith(prefix));
+            const matchesInclude = includePrefixes.some(prefix => urlPath.startsWith(prefix));
+
+            // Skip if it matches a skip prefix AND does NOT match an include prefix
+            const shouldSkip = matchesSkip && !matchesInclude;
+
             if (shouldSkip) {
                 console.log(`Skipping ${url} (matches prefix)`);
             }
             return !shouldSkip;
         });
-        console.log(`Filtered out ${originalCount - pagesToVisit.length} pages based on skip prefixes.`);
+        console.log(`Filtered out ${originalCount - pagesToVisit.length} pages based on skip/include prefixes.`);
     }
 
     // 2. Visit Pages and Collect Scripts

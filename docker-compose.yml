@@ -1,11 +1,11 @@
-version: '3.8'
-
 services:
   security-scan:
     build: .
     container_name: security-scan-job
     environment:
       - TARGET_URL=${TARGET_URL}
+      - SKIP_URL_PREFIXES=${SKIP_URL_PREFIXES}
+      - INCLUDE_URL_PREFIXES=${INCLUDE_URL_PREFIXES}
       # SMTP Configuration for emailing reports
       - SMTP_HOST=${SMTP_HOST:-smtp.example.com}
       - SMTP_PORT=${SMTP_PORT:-587}
