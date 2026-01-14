@@ -188,17 +188,14 @@ async function parseSitemap(page, sitemapUrl) {
     }
 
     // 2. Visit Pages and Collect Scripts
-    const foundUrlsFile = path.join(__dirname, 'found_urls.txt');
-    // Clear previous run
-    if (fs.existsSync(foundUrlsFile)) fs.unlinkSync(foundUrlsFile);
+    const foundUrlsFile = path.join(__dirname, 'found_urls.json');
+    const downloadedScriptsFile = path.join(__dirname, 'downloaded_scripts.json');
 
-    const appendUrls = (urls) => {
-        if (urls.length > 0) {
-            fs.appendFileSync(foundUrlsFile, urls.join('\n') + '\n');
-        }
-    };
+    // Store findings in memory
+    const allFoundUrls = []; // { page: string, urls: string[] }
+    const downloadedScriptsData = []; // { filename: string, originalUrl: string, foundOnPage: string }
 
-    let downloadedScripts = 0;
+    let downloadedScriptsCount = 0;
 
     for (const pageUrl of pagesToVisit) {
         if (seenPages.has(pageUrl)) continue;
@@ -231,7 +228,10 @@ async function parseSitemap(page, sitemapUrl) {
                 return Array.from(urls);
             });
 
-            appendUrls(extractedUrls);
+            allFoundUrls.push({
+                page: pageUrl,
+                urls: extractedUrls
+            });
 
             const scripts = await page.evaluate(() => {
                 return Array.from(document.querySelectorAll('script[src]'))
@@ -254,7 +254,13 @@ async function parseSitemap(page, sitemapUrl) {
 
                         console.log(`--> Downloading ${scriptUrl}`);
                         await downloadFile(scriptUrl, destPath);
-                        downloadedScripts += 1;
+                        downloadedScriptsCount += 1;
+
+                        downloadedScriptsData.push({
+                            filename: uniqueName,
+                            originalUrl: scriptUrl,
+                            foundOnPage: pageUrl
+                        });
                     } catch (err) {
                         console.error(`Failed to handle script url ${scriptUrl}:`, err.message);
                     }
@@ -268,15 +274,21 @@ async function parseSitemap(page, sitemapUrl) {
 
     console.log('Download complete.');
     console.log(`Scanned ${seenPages.size} pages.`);
-    console.log(`Downloaded ${downloadedScripts} unique scripts.`);
+    console.log(`Downloaded ${downloadedScriptsCount} unique scripts.`);
+
+    // Write data files
+    fs.writeFileSync(foundUrlsFile, JSON.stringify(allFoundUrls, null, 2));
+    fs.writeFileSync(downloadedScriptsFile, JSON.stringify(downloadedScriptsData, null, 2));
 
     // Save metrics for report
     const metadata = {
         scannedUrlCount: seenPages.size,
-        downloadedScriptCount: downloadedScripts
+        downloadedScriptCount: downloadedScriptsCount
     };
     const reportsDir = path.join(__dirname, 'reports');
-    fs.mkdirSync(reportsDir, { recursive: true });
+    if (!fs.existsSync(reportsDir)) {
+        fs.mkdirSync(reportsDir, { recursive: true });
+    }
     fs.writeFileSync(path.join(reportsDir, 'scan-metadata.json'), JSON.stringify(metadata, null, 2));
 
     await browser.close();

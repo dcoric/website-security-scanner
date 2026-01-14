@@ -146,12 +146,23 @@ async function sendEmail() {
     let deadDomainHtml = '';
     let deadDomainSummary = '';
     try {
-        if (fs.existsSync('dead-domains.json')) {
-            const data = JSON.parse(fs.readFileSync('dead-domains.json', 'utf8'));
+        const deadDomainsPath = path.join(reportsDir, 'dead-domains.json');
+        if (fs.existsSync(deadDomainsPath)) {
+            const data = JSON.parse(fs.readFileSync(deadDomainsPath, 'utf8'));
             if (data.deadDomains && data.deadDomains.length > 0) {
                 deadDomainIssues = data.deadDomains.length;
-                deadDomainHtml = '<ul>' + data.deadDomains.map(d => `<li><strong>${d.domain}</strong>: ${d.error}</li>`).join('') + '</ul>';
-                deadDomainSummary = data.deadDomains.map(d => `- ${d.domain} (${d.error})`).join('\n');
+                deadDomainHtml = '<ul>' + data.deadDomains.map(d => {
+                    let sourcesHtml = '';
+                    if (d.sources && d.sources.length > 0) {
+                        sourcesHtml = '<ul style="font-size: 0.9em; color: #555;">' + d.sources.map(s => `<li>${s}</li>`).join('') + '</ul>';
+                    }
+                    return `<li><strong>${d.domain}</strong>: ${d.error}${sourcesHtml}</li>`;
+                }).join('') + '</ul>';
+
+                deadDomainSummary = data.deadDomains.map(d => {
+                    const sources = (d.sources || []).map(s => `    - ${s}`).join('\n');
+                    return `- ${d.domain} (${d.error})\n${sources}`;
+                }).join('\n');
             }
         }
     } catch (e) { }

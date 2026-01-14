@@ -1,10 +1,20 @@
 {
-    "deadDomains": [
-        {
-            "domain": "test-dead-domain.com",
-            "error": "ENOTFOUND"
-        }
-    ],
-    "totalChecked": 10,
-    "timestamp": "2024-01-01T00:00:00.000Z"
+  "deadDomains": [
+    {
+      "domain": "this-domain-definitely-does-not-exist-12345.com",
+      "error": "ENOTFOUND",
+      "sources": [
+        "Found on Page: https://example.com/page1"
+      ]
+    },
+    {
+      "domain": "another-dead-domain-98765.com",
+      "error": "ENOTFOUND",
+      "sources": [
+        "Found in Script: https://example.com/lib.js (loaded by https://example.com/page2)"
+      ]
+    }
+  ],
+  "totalChecked": 7,
+  "timestamp": "2026-01-14T10:45:43.371Z"
 }
