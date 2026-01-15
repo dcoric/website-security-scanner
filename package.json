@@ -4,7 +4,9 @@
     "description": "Automated security scan for website dependencies",
     "scripts": {
         "scan": "retire-site-scanner",
-        "download-assets": "node download-assets.js"
+        "download-assets": "node download-assets.js",
+        "send-report": "node --env-file=.env send-report.js",
+        "local-report": "node --env-file=.env send-report.js --local"
     },
     "devDependencies": {
         "puppeteer": "^23.11.1",

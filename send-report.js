@@ -20,6 +20,10 @@ const llmModel = process.env.LLM_MODEL; // e.g. gpt-4o, gemini-pro, deepseek-cha
 const llmBaseUrl = process.env.LLM_BASE_URL;
 const reportsDir = path.join(__dirname, 'reports');
 
+// CLI flags
+const args = process.argv.slice(2);
+const localMode = args.includes('--local') || args.includes('-l');
+
 async function generateReportContent(retireSummary, clamavSummary, deadDomainSummary, totalIssues, scanMetrics) {
     if (!llmProvider || !llmApiKey) {
         console.log('LLM_PROVIDER or LLM_API_KEY not set. Using default template.');
@@ -50,6 +54,7 @@ async function generateReportContent(retireSummary, clamavSummary, deadDomainSum
     - If there are issues, highlight them and explain the potential risk.
     - If there are no issues, certify that the scan passed.
     - Include metrics about the scan (number of pages, number of checked files).
+    - Add information that all report files are stored on the server from where scan was run.
     - Use a professional tone.
     - Output ONLY the HTML body content (do not include <html> or <body> tags, just the inner content).
     - Use clear headings and lists.
@@ -95,12 +100,7 @@ async function generateReportContent(retireSummary, clamavSummary, deadDomainSum
     }
 }
 
-async function sendEmail() {
-    if (!smtpHost || !emailTo) {
-        console.log('SMTP_HOST or EMAIL_TO not set. Skipping email report.');
-        return;
-    }
-
+async function generateReport() {
     // 1. Gather Data
     let retireIssues = 0;
     let retireHtml = '';
@@ -199,7 +199,40 @@ async function sendEmail() {
         `;
     }
 
-    // 3. Send Email
+    // 3. Output report
+    const totalIssues = retireIssues + clamavIssues + deadDomainIssues;
+    const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Security Scan Report - ${targetUrl}</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        h2, h3 { color: #333; }
+        ul { padding-left: 20px; }
+        li { margin: 5px 0; }
+    </style>
+</head>
+<body>
+${htmlContent}
+</body>
+</html>`;
+
+    // Always save HTML report locally
+    const outputPath = path.join(reportsDir, 'report.html');
+    fs.writeFileSync(outputPath, fullHtml);
+    console.log(`Report saved to ${outputPath}`);
+
+    // Skip email if --local flag or missing SMTP config
+    if (localMode) {
+        return;
+    }
+
+    if (!smtpHost || !emailTo) {
+        console.log('SMTP_HOST or EMAIL_TO not set. Skipping email.');
+        return;
+    }
+
     const transporter = nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
@@ -208,7 +241,7 @@ async function sendEmail() {
         ignoreTLS: true
     });
 
-    const subject = `WebsiteSecurity Report: ${(retireIssues + clamavIssues + deadDomainIssues) > 0 ? "Issues Found" : "Clean"}`;
+    const subject = `WebsiteSecurity Report: ${totalIssues > 0 ? "Issues Found" : "Clean"}`;
 
     try {
         await transporter.sendMail({
@@ -223,4 +256,4 @@ async function sendEmail() {
     }
 }
 
-sendEmail();
+generateReport();
