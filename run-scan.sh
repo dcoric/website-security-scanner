@@ -10,6 +10,10 @@ echo "[!] Running Dead Domain Scan..."
 node check-dead-domains.js || true
 # If this fails (exit 1), we continue so we can report it via email.
 
+# 1.6 Blacklist Scan
+echo "[!] Running Spamhaus Blacklist Scan..."
+node check-blacklist.js "$TARGET_URL" || true
+
 # 2. Retire.js Scan
 echo "[2/4] Running Vulnerability Scan..."
 # We allow this to fail (return code != 0) so the script continues? 

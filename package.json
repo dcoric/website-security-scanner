@@ -6,7 +6,8 @@
         "scan": "retire-site-scanner",
         "download-assets": "node download-assets.js",
         "send-report": "node --env-file=.env send-report.js",
-        "local-report": "node --env-file=.env send-report.js --local"
+        "local-report": "node --env-file=.env send-report.js --local",
+        "check-blacklist": "node check-blacklist.js"
     },
     "devDependencies": {
         "puppeteer": "^23.11.1",
