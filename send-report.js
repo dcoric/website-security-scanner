@@ -24,7 +24,7 @@ const reportsDir = path.join(__dirname, 'reports');
 const args = process.argv.slice(2);
 const localMode = args.includes('--local') || args.includes('-l');
 
-async function generateReportContent(retireSummary, clamavSummary, deadDomainSummary, totalIssues, scanMetrics) {
+async function generateReportContent(retireSummary, clamavSummary, deadDomainSummary, blacklistSummary, totalIssues, scanMetrics) {
     if (!llmProvider || !llmApiKey) {
         console.log('LLM_PROVIDER or LLM_API_KEY not set. Using default template.');
         return null;
@@ -36,6 +36,9 @@ async function generateReportContent(retireSummary, clamavSummary, deadDomainSum
     Scan is run on ${new Date().toLocaleString()}
 
     Here are the raw results:
+
+    [Spamhaus Domain Blocklist]
+    ${blacklistSummary || 'Data not available.'}
 
     [Dead Domain Scan (Critical - Potential Subdomain Takeover)]
     ${deadDomainSummary || 'No dead domains found.'}
@@ -168,6 +171,28 @@ async function generateReport() {
     } catch (e) { }
     if (deadDomainIssues === 0) deadDomainHtml = 'No dead domains found.';
 
+    // 1.5 Blacklist Scan
+    let blacklistIssues = 0;
+    let blacklistHtml = '';
+    let blacklistSummary = '';
+    try {
+        const blacklistPath = path.join(reportsDir, 'blacklist-report.json');
+        if (fs.existsSync(blacklistPath)) {
+            const data = JSON.parse(fs.readFileSync(blacklistPath, 'utf8'));
+            if (data.status === 'listed') {
+                blacklistIssues = 1;
+                blacklistHtml = `<p style="color: red;"><strong>[FAIL] ${data.domain}</strong> is listed in Spamhaus DBL!</p>`;
+                blacklistSummary = `[FAIL] ${data.domain} is LISTED in Spamhaus DBL.`;
+            } else if (data.status === 'blocked') {
+                blacklistHtml = `<p style="color: orange;"><strong>[WARN]</strong> Spamhaus query blocked. Use a private resolver.</p>`;
+                blacklistSummary = `[WARN] Spamhaus query blocked.`;
+            } else if (data.status === 'clean') {
+                blacklistHtml = `<p style="color: green;"><strong>[PASS]</strong> ${data.domain} is clean.</p>`;
+                blacklistSummary = `[PASS] ${data.domain} is clean.`;
+            }
+        }
+    } catch (e) { }
+
     // 2. Generate Content
     let scanMetrics = null;
     try {
@@ -179,7 +204,7 @@ async function generateReport() {
         console.error('Failed to read scan metadata:', e.message);
     }
 
-    let htmlContent = await generateReportContent(retireHtml, clamavHtml, deadDomainSummary, retireIssues + clamavIssues + deadDomainIssues, scanMetrics);
+    let htmlContent = await generateReportContent(retireHtml, clamavHtml, deadDomainSummary, blacklistSummary, retireIssues + clamavIssues + deadDomainIssues + blacklistIssues, scanMetrics);
 
     if (!htmlContent) {
         // Fallback Template
@@ -188,6 +213,9 @@ async function generateReport() {
             <p><strong>Pages Scanned:</strong> ${scanMetrics ? scanMetrics.scannedUrlCount : 'Unknown'}</p>
             <p><strong>Scripts Downloaded:</strong> ${scanMetrics ? scanMetrics.downloadedScriptCount : 'Unknown'}</p>
             
+            <h3>Spamhaus Blacklist</h3>
+            ${blacklistHtml}
+
             <h3>Dead Domains (Critical)</h3>
             ${deadDomainHtml}
 
@@ -200,7 +228,8 @@ async function generateReport() {
     }
 
     // 3. Output report
-    const totalIssues = retireIssues + clamavIssues + deadDomainIssues;
+    // 3. Output report
+    const totalIssues = retireIssues + clamavIssues + deadDomainIssues + blacklistIssues;
     const fullHtml = `<!DOCTYPE html>
 <html>
 <head>

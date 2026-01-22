@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const dns = require('dns');
 const url = require('url');
 
@@ -8,6 +10,13 @@ if (args.length < 1) {
 }
 
 const input = args[0];
+
+// Helper to ensure reports directory exists
+const reportsDir = path.join(__dirname, 'reports');
+if (!fs.existsSync(reportsDir)) {
+    fs.mkdirSync(reportsDir, { recursive: true });
+}
+const reportPath = path.join(reportsDir, 'blacklist-report.json');
 
 const extractDomain = (inputUrl) => {
     try {
@@ -31,25 +40,31 @@ const extractDomain = (inputUrl) => {
 const domain = extractDomain(input);
 const query = `${domain}.dbl.spamhaus.org`;
 
+const writeReport = (status, code, details) => {
+    const report = {
+        domain: domain,
+        status: status,
+        details: details,
+        timestamp: new Date().toISOString()
+    };
+    fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+};
+
 console.log(`Checking ${domain} against Spamhaus (Query: ${query})...`);
 
 dns.resolve(query, (err, addresses) => {
     if (err) {
         if (err.code === 'ENOTFOUND') {
             console.log(`[PASS] ${domain} is NOT listed in Spamhaus DBL.`);
+            writeReport('clean', null, 'Domain is not listed.');
             process.exit(0);
         } else {
             console.error(`[ERROR] DNS lookup failed: ${err.message}`);
-            // If DNS fails for other reasons, we might not want to fail the build, 
-            // but for now let's treat it as a non-failure for the scan flow (soft fail)
-            // or we could exit 1 if we want to be strict. 
-            // Given the user note about public DNS potentially blocking, 
-            // maybe we should fail open (exit 0) but warn?
-            // Let's exit 0 but with error log to not block pipeline if DNS is flaky.
+            writeReport('error', err.code, `DNS lookup failed: ${err.message}`);
+            // Treat DNS failures as "clean" regarding blacklist for now to avoid blocking build
             process.exit(0);
         }
     } else {
-        // If we get an IP, it is listed.
         // Check for specific Spamhaus return codes that indicate query limitations (blocking)
         // https://www.spamhaus.org/faq/section/DNSBL%20Usage#200
         const blockedCodes = ['127.255.255.254', '127.255.255.255'];
@@ -58,19 +73,14 @@ dns.resolve(query, (err, addresses) => {
         if (isBlocked) {
             console.warn(`[WARN] Spamhaus query was BLOCKED by the DNS resolver.`);
             console.warn(`       Return codes: ${addresses.join(', ')}`);
-            console.warn(`       Try using a non-public DNS resolver or a Spamhaus DQS key.`);
-            // detailed info: 127.255.255.254 = Query blocked (public resolver)
-            //                127.255.255.255 = Excessive number of queries
+            writeReport('blocked', addresses.join(', '), 'Query blocked by resolver.');
             process.exit(0); // Soft fail / Pass but warn.
         }
 
         // Real listing
-        // Return codes: https://www.spamhaus.org/faq/section/Spamhaus%20DBL#291
-        // 127.0.1.2 - Spam domain
-        // 127.0.1.4 - Phishing domain
-        // ... etc
         console.error(`[FAIL] ${domain} IS LISTED in Spamhaus DBL!`);
         console.error(`       Return codes: ${addresses.join(', ')}`);
+        writeReport('listed', addresses.join(', '), 'Domain is listed in Spamhaus DBL.');
         process.exit(1);
     }
 });
