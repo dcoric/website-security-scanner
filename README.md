@@ -68,6 +68,13 @@ To run this scanner as a containerized job with email reporting:
       - LLM_PROVIDER=deepseek # or openai, gemini, custom
       - LLM_API_KEY=your_key_here
       - LLM_MODEL=deepseek-chat
+
+      # Google Safe Browsing (Optional)
+      - GOOGLE_SAFE_BROWSING_KEY=your_google_safe_browsing_key
+
+      # Scanning Scope Control (Optional)
+      - SKIP_URL_PREFIXES=/blog,/news
+      - INCLUDE_URL_PREFIXES=/blog/important-article
     ```
 
 2.  **Build & Run**:

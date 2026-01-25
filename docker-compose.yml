@@ -21,6 +21,8 @@ services:
       - LLM_MODEL=${LLM_MODEL}
       # Required only for 'custom' provider (or to override others)
       - LLM_BASE_URL=${LLM_BASE_URL}
+
+      - GOOGLE_SAFE_BROWSING_KEY=${GOOGLE_SAFE_BROWSING_KEY}
     volumes:
       # Persist ClamAV database so it doesn't redownload every run
       - clamav_db:/var/lib/clamav

@@ -24,7 +24,7 @@ const reportsDir = path.join(__dirname, 'reports');
 const args = process.argv.slice(2);
 const localMode = args.includes('--local') || args.includes('-l');
 
-async function generateReportContent(retireSummary, clamavSummary, deadDomainSummary, blacklistSummary, totalIssues, scanMetrics) {
+async function generateReportContent(retireHtml, clamavHtml, deadDomainSummary, blacklistSummary, safebrowsingSummary, totalIssues, scanMetrics) {
     if (!llmProvider || !llmApiKey) {
         console.log('LLM_PROVIDER or LLM_API_KEY not set. Using default template.');
         return null;
@@ -40,14 +40,17 @@ async function generateReportContent(retireSummary, clamavSummary, deadDomainSum
     [Spamhaus Domain Blocklist]
     ${blacklistSummary || 'Data not available.'}
 
+    [Google Safe Browsing]
+    ${safebrowsingSummary || 'Data not available.'}
+
     [Dead Domain Scan (Critical - Potential Subdomain Takeover)]
     ${deadDomainSummary || 'No dead domains found.'}
     
     [Retire.js (Client-Side Vulnerabilities)]
-    ${retireSummary.replace(/<[^>]*>/g, '') /* Strip HTML for prompt */}
+    ${retireHtml.replace(/<[^>]*>/g, '') /* Strip HTML for prompt */}
     
     [ClamAV (Malware Detection)]
-    ${clamavSummary.replace(/<[^>]*>/g, '')}
+    ${clamavHtml.replace(/<[^>]*>/g, '')}
     
     Total Issues Found: ${totalIssues}
     Pages Scanned: ${scanMetrics ? scanMetrics.scannedUrlCount : 'Unknown'}
@@ -193,6 +196,31 @@ async function generateReport() {
         }
     } catch (e) { }
 
+    // 1.6 Google Safe Browsing Scan
+    let safebrowsingIssues = 0;
+    let safebrowsingHtml = '';
+    let safebrowsingSummary = '';
+    const safebrowsingPath = path.join(reportsDir, 'safebrowsing-report.json');
+    try {
+        if (fs.existsSync(safebrowsingPath)) {
+            const data = JSON.parse(fs.readFileSync(safebrowsingPath, 'utf8'));
+            if (data.status === 'unsafe') {
+                safebrowsingIssues = 1;
+                safebrowsingHtml = `<p style="color: red;"><strong>[FAIL] ${data.url}</strong> is listed as UNSAFE!</p>`;
+                if (data.matches && data.matches.length > 0) {
+                    safebrowsingHtml += '<ul>' + data.matches.map(m => `<li>${m.threatType}</li>`).join('') + '</ul>';
+                }
+                safebrowsingSummary = `[FAIL] ${data.url} is listed as UNSAFE in Google Safe Browsing.`;
+            } else if (data.status === 'error') {
+                safebrowsingHtml = `<p style="color: orange;"><strong>[ERROR]</strong> Safe Browsing check failed: ${data.details}</p>`;
+                safebrowsingSummary = `[ERROR] Safe Browsing check failed: ${data.details}`;
+            } else {
+                safebrowsingHtml = `<p style="color: green;"><strong>[PASS]</strong> ${data.url} is clean.</p>`;
+                safebrowsingSummary = `[PASS] ${data.url} is clean on Google Safe Browsing.`;
+            }
+        }
+    } catch (e) { }
+
     // 2. Generate Content
     let scanMetrics = null;
     try {
@@ -204,7 +232,7 @@ async function generateReport() {
         console.error('Failed to read scan metadata:', e.message);
     }
 
-    let htmlContent = await generateReportContent(retireHtml, clamavHtml, deadDomainSummary, blacklistSummary, retireIssues + clamavIssues + deadDomainIssues + blacklistIssues, scanMetrics);
+    let htmlContent = await generateReportContent(retireHtml, clamavHtml, deadDomainSummary, blacklistSummary, safebrowsingSummary, retireIssues + clamavIssues + deadDomainIssues + blacklistIssues + safebrowsingIssues, scanMetrics);
 
     if (!htmlContent) {
         // Fallback Template
@@ -215,6 +243,9 @@ async function generateReport() {
             
             <h3>Spamhaus Blacklist</h3>
             ${blacklistHtml}
+
+            <h3>Google Safe Browsing</h3>
+            ${safebrowsingHtml}
 
             <h3>Dead Domains (Critical)</h3>
             ${deadDomainHtml}
@@ -228,8 +259,7 @@ async function generateReport() {
     }
 
     // 3. Output report
-    // 3. Output report
-    const totalIssues = retireIssues + clamavIssues + deadDomainIssues + blacklistIssues;
+    const totalIssues = retireIssues + clamavIssues + deadDomainIssues + blacklistIssues + safebrowsingIssues;
     const fullHtml = `<!DOCTYPE html>
 <html>
 <head>

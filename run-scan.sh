@@ -10,7 +10,11 @@ echo "[!] Running Dead Domain Scan..."
 node check-dead-domains.js || true
 # If this fails (exit 1), we continue so we can report it via email.
 
-# 1.6 Safe Browsing Scan
+# 1.6 Blacklist Scan (Spamhaus, SURBL, URIBL)
+echo "[!] Running Blacklist Scan..."
+node check-blacklist.js "$TARGET_URL" || true
+
+# 1.7 Safe Browsing Scan
 echo "[!] Running Google Safe Browsing Scan..."
 node check-safebrowsing.js "$TARGET_URL" || true
 
@@ -37,5 +41,18 @@ cat "$REPORTS_DIR/clamav-report.txt"
 # 4. Email Report
 echo "[4/4] Sending Report..."
 node send-report.js
+
+# 5. Archive Reports
+echo "[5/5] Archiving Reports..."
+TIMESTAMP=$(date +"%Y-%m-%d_%H-%M-%S")
+# Create archive of all files in REPORTS_DIR (excluding previous archives to avoid recursion if any)
+# We cd into REPORTS_DIR to have cleaner paths in archive, or just archive the dir.
+# Let's archive the contents of REPORTS_DIR into a file INSIDE REPORTS_DIR.
+# We must exclude the archive itself from itself (tar usually handles this warning, but better to be safe)
+# Actually, standard practice: scan-report-YYYY-MM-DD_HH-MM-SS.tar.gz
+ARCHIVE_NAME="scan-report-${TIMESTAMP}.tar.gz"
+tar -czf "$REPORTS_DIR/$ARCHIVE_NAME" -C "$REPORTS_DIR" .
+
+echo "Report archived to $REPORTS_DIR/$ARCHIVE_NAME"
 
 echo "Scan Complete."
