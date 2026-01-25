@@ -10,9 +10,9 @@ echo "[!] Running Dead Domain Scan..."
 node check-dead-domains.js || true
 # If this fails (exit 1), we continue so we can report it via email.
 
-# 1.6 Blacklist Scan
-echo "[!] Running Spamhaus Blacklist Scan..."
-node check-blacklist.js "$TARGET_URL" || true
+# 1.6 Safe Browsing Scan
+echo "[!] Running Google Safe Browsing Scan..."
+node check-safebrowsing.js "$TARGET_URL" || true
 
 # 2. Retire.js Scan
 echo "[2/4] Running Vulnerability Scan..."
@@ -26,8 +26,10 @@ npx retire --path js_assets --outputformat json --outputpath "$REPORTS_DIR/retir
 
 # 3. ClamAV Scan
 echo "[3/4] Running ClamAV Scan..."
-# Update database occasionally? For docker, we might update in entrypoint or cron.
-# Assuming db is present.
+# Update virus definitions
+echo "Updating ClamAV definitions..."
+freshclam || echo "Warning: freshclam failed, proceeding with existing definitions."
+
 clamscan -r js_assets > "$REPORTS_DIR/clamav-report.txt" || true
 # Cat the report to stdout for logs
 cat "$REPORTS_DIR/clamav-report.txt"

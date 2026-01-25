@@ -2,6 +2,10 @@ const fs = require('fs');
 const path = require('path');
 const dns = require('dns');
 const url = require('url');
+const { promisify } = require('util');
+
+const resolve4 = promisify(dns.resolve4);
+const resolve = promisify(dns.resolve);
 
 const args = process.argv.slice(2);
 if (args.length < 1) {
@@ -21,24 +25,50 @@ const reportPath = path.join(reportsDir, 'blacklist-report.json');
 const extractDomain = (inputUrl) => {
     try {
         if (!inputUrl.startsWith('http://') && !inputUrl.startsWith('https://')) {
-            // Try to parse as is, if fails, might be just a domain
             if (inputUrl.includes('/')) {
-                // likely a schemeless url like //example.com/foo
                 if (inputUrl.startsWith('//')) {
                     return new url.URL('https:' + inputUrl).hostname;
                 }
                 return new url.URL('https://' + inputUrl).hostname;
             }
-            return inputUrl; // Assume it's a domain
+            return inputUrl;
         }
         return new url.URL(inputUrl).hostname;
     } catch (e) {
-        return input; // Fallback to returning input if parsing fails
+        return input;
     }
 };
 
 const domain = extractDomain(input);
-const query = `${domain}.dbl.spamhaus.org`;
+
+const BLACKLISTS = [
+    {
+        name: 'Spamhaus DBL',
+        suffix: 'dbl.spamhaus.org',
+        type: 'domain',
+        ignoreCodes: ['127.255.255.254', '127.255.255.255'] // Query Refused
+    },
+    {
+        name: 'SURBL',
+        suffix: 'multi.surbl.org',
+        type: 'domain',
+        ignoreCodes: []
+    },
+    {
+        name: 'URIBL',
+        suffix: 'multi.uribl.com',
+        type: 'domain',
+        ignoreCodes: ['127.0.0.1'] // Query Refused
+    }
+];
+
+const IP_BLACKLISTS = [
+    {
+        name: 'Spamhaus ZEN',
+        suffix: 'zen.spamhaus.org',
+        ignoreCodes: ['127.255.255.254', '127.255.255.255'] // Query Refused
+    }
+];
 
 const writeReport = (status, code, details) => {
     const report = {
@@ -50,37 +80,104 @@ const writeReport = (status, code, details) => {
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
 };
 
-console.log(`Checking ${domain} against Spamhaus (Query: ${query})...`);
-
-dns.resolve(query, (err, addresses) => {
-    if (err) {
+const checkDNS = async (query) => {
+    try {
+        const addresses = await resolve(query);
+        return { listed: true, addresses };
+    } catch (err) {
         if (err.code === 'ENOTFOUND') {
-            console.log(`[PASS] ${domain} is NOT listed in Spamhaus DBL.`);
-            writeReport('clean', null, 'Domain is not listed.');
-            process.exit(0);
-        } else {
-            console.error(`[ERROR] DNS lookup failed: ${err.message}`);
-            writeReport('error', err.code, `DNS lookup failed: ${err.message}`);
-            // Treat DNS failures as "clean" regarding blacklist for now to avoid blocking build
-            process.exit(0);
+            return { listed: false };
         }
-    } else {
-        // Check for specific Spamhaus return codes that indicate query limitations (blocking)
-        // https://www.spamhaus.org/faq/section/DNSBL%20Usage#200
-        const blockedCodes = ['127.255.255.254', '127.255.255.255'];
-        const isBlocked = addresses.some(addr => blockedCodes.includes(addr));
-
-        if (isBlocked) {
-            console.warn(`[WARN] Spamhaus query was BLOCKED by the DNS resolver.`);
-            console.warn(`       Return codes: ${addresses.join(', ')}`);
-            writeReport('blocked', addresses.join(', '), 'Query blocked by resolver.');
-            process.exit(0); // Soft fail / Pass but warn.
-        }
-
-        // Real listing
-        console.error(`[FAIL] ${domain} IS LISTED in Spamhaus DBL!`);
-        console.error(`       Return codes: ${addresses.join(', ')}`);
-        writeReport('listed', addresses.join(', '), 'Domain is listed in Spamhaus DBL.');
-        process.exit(1);
+        throw err;
     }
-});
+};
+
+const reverseIP = (ip) => {
+    return ip.split('.').reverse().join('.');
+};
+
+const checkAll = async () => {
+    console.log(`Checking ${domain} against multiple blacklists...`);
+
+    let results = [];
+    let listed = false;
+    let details = [];
+
+    // 1. Check Domain-based lists
+    for (const list of BLACKLISTS) {
+        const query = `${domain}.${list.suffix}`;
+        try {
+            const result = await checkDNS(query);
+            if (result.listed) {
+                // Check if any returned code is an "ignore" code (query refused)
+                const ignored = result.addresses.filter(addr => list.ignoreCodes.includes(addr));
+                const realListings = result.addresses.filter(addr => !list.ignoreCodes.includes(addr));
+
+                if (ignored.length > 0) {
+                    console.warn(`[WARN] ${list.name} query refused/blocked (Codes: ${ignored.join(', ')}).`);
+                }
+
+                if (realListings.length > 0) {
+                    console.error(`[FAIL] ${domain} IS LISTED in ${list.name}! Codes: ${realListings.join(', ')}`);
+                    results.push({ source: list.name, listed: true, codes: realListings });
+                    details.push(`${list.name}: LISTED (${realListings.join(', ')})`);
+                    listed = true;
+                }
+            } else {
+                // console.log(`[PASS] ${domain} is clean on ${list.name}.`);
+            }
+        } catch (err) {
+            console.error(`[ERROR] Check failed for ${list.name}: ${err.message}`);
+        }
+    }
+
+    // 2. Resolve IP and check IP-based lists
+    try {
+        const ips = await resolve4(domain);
+        if (ips && ips.length > 0) {
+            const ip = ips[0]; // Check the first IP
+            console.log(`Resolved ${domain} to ${ip}, checking IP blacklists...`);
+            const reversedIp = reverseIP(ip);
+
+            for (const list of IP_BLACKLISTS) {
+                const query = `${reversedIp}.${list.suffix}`;
+                try {
+                    const result = await checkDNS(query);
+                    if (result.listed) {
+                        const ignored = result.addresses.filter(addr => list.ignoreCodes.includes(addr));
+                        const realListings = result.addresses.filter(addr => !list.ignoreCodes.includes(addr));
+
+                        if (ignored.length > 0) {
+                            console.warn(`[WARN] ${list.name} query refused/blocked (Codes: ${ignored.join(', ')}).`);
+                        }
+
+                        if (realListings.length > 0) {
+                            console.error(`[FAIL] IP ${ip} IS LISTED in ${list.name}! Codes: ${realListings.join(', ')}`);
+                            results.push({ source: list.name, listed: true, codes: realListings, ip: ip });
+                            details.push(`${list.name} (IP ${ip}): LISTED (${realListings.join(', ')})`);
+                            listed = true;
+                        }
+                    } else {
+                        // console.log(`[PASS] IP ${ip} is clean on ${list.name}.`);
+                    }
+                } catch (err) {
+                    console.error(`[ERROR] Check failed for ${list.name}: ${err.message}`);
+                }
+            }
+        }
+    } catch (err) {
+        console.warn(`[WARN] Could not resolve IP for ${domain}, skipping IP blacklists: ${err.message}`);
+    }
+
+    if (listed) {
+        writeReport('listed', 'MULTIPLE', details.join('; '));
+        console.log(`\nOverall Status: [FAIL] Domain or IP is listed.`);
+        process.exit(1);
+    } else {
+        writeReport('clean', null, 'Domain and IP not listed in checked blacklists.');
+        console.log(`\nOverall Status: [PASS] ${domain} is clean.`);
+        process.exit(0);
+    }
+};
+
+checkAll();

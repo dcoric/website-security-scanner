@@ -7,7 +7,8 @@
         "download-assets": "node download-assets.js",
         "send-report": "node --env-file=.env send-report.js",
         "local-report": "node --env-file=.env send-report.js --local",
-        "check-blacklist": "node check-blacklist.js"
+        "check-blacklist": "node check-blacklist.js",
+        "check-safebrowsing": "node check-safebrowsing.js"
     },
     "devDependencies": {
         "puppeteer": "^23.11.1",
